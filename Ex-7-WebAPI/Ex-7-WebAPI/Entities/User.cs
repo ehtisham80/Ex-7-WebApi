@@ -35,7 +35,13 @@ namespace Ex_7_WebAPI.Entities
             {
                 PasswordSalt = hmac.Key;
                 PasswordHash = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(password));
+                for(int i=0; i< computedHash.Lenght; i++)
+                {
+                    if (computedHash[i] != PasswordHash[i])
+                        return false;
+                }
             }
+            return true;
         }
     }
 }

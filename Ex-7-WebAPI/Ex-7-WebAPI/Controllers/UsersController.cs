@@ -10,10 +10,14 @@ using Ex_7_WebAPI.Entities;
 using Microsoft.AspNetCore.Authorization;
 using System.ComponentModel.DataAnnotations;
 using Ex_7_WebAPI.Models;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.AccessControl;
+using Microsoft.IdentityModel.Tokens;
+using System.Security.Claims;
+using Microsoft.Extensions.Configuration;
 
 namespace Ex_7_WebAPI.Controllers
 {
-
 
     [Authorize]
     [Route("api/[controller]")]
@@ -22,11 +26,14 @@ namespace Ex_7_WebAPI.Controllers
     {
         private readonly DataContext _context;
 
-        public UsersController(DataContext context)
+        public IConfiguration Configuration { get; }
+        public UsersController(DataContext context, IConfiguration configuration)
         {
             _context = context;
+            Configuration = configuration;
         }
-
+        
+        
         // GET: api/Users
         [HttpGet]
         public async Task<ActionResult<IEnumerable<User>>> GetUsers()
@@ -100,7 +107,7 @@ namespace Ex_7_WebAPI.Controllers
                     LastName = model.LastName,
                     Email = model.Email
                 };
-
+                user.CreatePasswordHash(model.Password);
                 _context.Users.Add(user);
                 await _context.SaveChangesAsync();
 
@@ -110,6 +117,64 @@ namespace Ex_7_WebAPI.Controllers
             {
                 return BadRequest();
             }
+        }
+
+
+
+
+
+
+        [AllowAnonymous]
+        [HttpPost("login")]
+        public async Task<ActionResult> Login([FromBody] LoginModel model)
+        {
+            if (string.IsNullOrEmpty(model.Email) || string.IsNullOrEmpty(model.Password))
+                return BadRequest("email or password empty");
+
+            var user = await _context.Users.SingleOrDefaultAsync(user => user.Email == model.Email);
+
+            if (user == null)
+                return BadRequest("user not found");
+
+
+            if (!user.VerifyPasswordHash(model.Password))
+                return BadRequest("Password don't match");
+
+
+
+
+            var tokenHandler = new JwtSecurityTokenHandler();
+
+            var key = ASSCII.GetBytes(Configuration.GetSection("Secret").Value);
+            var tockenDescriptor = new SecurityTokenDescriptor
+            {
+                Subject = new ClaimsIdentity(new Claim[]
+                {
+                    new Claim(ClaimTypes.Name, User.Id.ToString())
+                }),
+
+                Expires = DateTime.UtcNow.AddDays(7),
+                SigningCredentials = new SigningCredentials(
+                    new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature
+                    )
+            };
+
+            var token = tokenHandler.CreateToken(tokenDescriptor);
+            var tokenString = tokenHandler.WriteToken(token);
+
+            return Ok
+                (
+                new
+                {
+                    Id = user.Id,
+                    FirstName = user.FirstName,
+                LastName = user.LastName,
+                Email = user.Email,
+                token = tokenString
+                }
+                );
+            
+           
         }
 
 
